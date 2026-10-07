@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Lista de Compras</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>
+:root{--bg:#faf8f4;--card:#fff;--tx:#222;--mut:#8a857c;--ac:#2f8f5b;--ln:#e8e4dc;--dg:#c0392b;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#171815;--card:#222420;--tx:#eee;--mut:#8f9389;--ac:#4cc17f;--ln:#34372f;--dg:#e5675a}}
+:root[data-theme="dark"]{--bg:#171815;--card:#222420;--tx:#eee;--mut:#8f9389;--ac:#4cc17f;--ln:#34372f;--dg:#e5675a}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font-family:-apple-system,system-ui,"Segoe UI",Roboto,sans-serif}
+main{max-width:560px;margin:0 auto;padding:16px 16px 40px}
+h1{font-size:24px;margin:8px 0 2px}
+.sub{color:var(--mut);font-size:14px;margin-bottom:14px}
+.add{display:flex;gap:8px;position:sticky;top:env(safe-area-inset-top,0px);background:var(--bg);padding:8px 0;z-index:2}
+input[type=text]{flex:1;font-size:17px;padding:13px 14px;border:1px solid var(--ln);border-radius:12px;background:var(--card);color:var(--tx);min-width:0}
+button{font:inherit;border:0;cursor:pointer}
+.btn{background:var(--ac);color:#fff;font-weight:600;padding:0 18px;border-radius:12px;font-size:17px}
+ul{list-style:none;margin:8px 0;padding:0}
+li{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--ln);border-radius:12px;padding:12px 12px;margin-bottom:8px}
+.ck{width:26px;height:26px;border-radius:50%;border:2px solid var(--ln);background:none;flex:none;color:#fff;font-size:15px;line-height:1}
+li.done .ck{background:var(--ac);border-color:var(--ac)}
+.t{flex:1;font-size:17px;word-break:break-word;border:0;background:none;color:var(--tx);padding:2px 0;min-width:0}
+li.done .t{text-decoration:line-through;color:var(--mut)}
+.x{background:none;color:var(--mut);font-size:22px;padding:0 4px}
+.x:hover{color:var(--dg)}
+.empty{text-align:center;color:var(--mut);padding:40px 0}
+.foot{display:flex;justify-content:space-between;align-items:center;color:var(--mut);font-size:14px;margin-top:12px}
+.clr{background:none;color:var(--dg);font-size:14px}
+.warn{background:var(--card);border:1px solid var(--ln);border-radius:12px;padding:12px;color:var(--mut);font-size:14px;margin:10px 0}
+</style>
+</head>
+<body>
+<main>
+  <h1>🛒 Lista de Compras</h1>
+  <div class="sub" id="sub">Conectando…</div>
+  <div class="add">
+    <input type="text" id="inp" placeholder="Adicionar item…" autocomplete="off" enterkeyhint="done">
+    <button class="btn" id="addBtn">+</button>
+  </div>
+  <div id="warn"></div>
+  <ul id="list"></ul>
+  <div class="empty" id="empty" style="display:none">Lista vazia. Adicione o primeiro item!</div>
+  <div class="foot"><span id="count"></span><button class="clr" id="clr" style="display:none">Limpar comprados</button></div>
+</main>
+<script>
+(function(){
+  var items=[], col=null, canWrite=true;
+  var $=function(id){return document.getElementById(id)};
+  var list=$('list');
+
+  function render(){
+    var sorted=items.slice().sort(function(a,b){
+      if(a.done!==b.done) return a.done?1:-1;
+      return (a.ts||0)-(b.ts||0);
+    });
+    list.innerHTML='';
+    sorted.forEach(function(it){
+      var li=document.createElement('li'); if(it.done) li.className='done';
+      var ck=document.createElement('button'); ck.className='ck'; ck.textContent=it.done?'✓':'';
+      ck.setAttribute('aria-label','Marcar');
+      ck.onclick=function(){ write(it.id,{done:!it.done}); };
+      var t=document.createElement('input'); t.type='text'; t.className='t'; t.value=it.text;
+      t.disabled=!canWrite;
+      t.onchange=function(){ var v=t.value.trim(); if(!v){t.value=it.text;return;} if(v!==it.text) write(it.id,{text:v}); };
+      t.onkeydown=function(e){ if(e.key==='Enter') t.blur(); };
+      var x=document.createElement('button'); x.className='x'; x.textContent='×'; x.setAttribute('aria-label','Excluir');
+      x.onclick=function(){ col&&col.doc(it.id).delete().catch(function(){}); };
+      li.appendChild(ck); li.appendChild(t); li.appendChild(x); list.appendChild(li);
+    });
+    var pend=items.filter(function(i){return !i.done}).length, dn=items.length-pend;
+    $('empty').style.display=items.length?'none':'block';
+    $('count').textContent=items.length?(pend+' para comprar'+(dn?' · '+dn+' no carrinho':'')):'';
+    $('clr').style.display=dn?'inline':'none';
+  }
+
+  function write(id,patch){
+    if(!col) return;
+    col.doc(id).update(patch).catch(function(){ $('warn').innerHTML='<div class="warn">Não foi possível salvar. Verifique sua conexão.</div>'; });
+  }
+
+  function add(){
+    var inp=$('inp'), v=inp.value.trim();
+    if(!v||!col) return;
+    inp.value=''; inp.focus();
+    col.add({text:v,done:false,ts:Date.now()}).catch(function(){
+      $('warn').innerHTML='<div class="warn">Não foi possível salvar. Você precisa ter permissão de edição.</div>';
+    });
+  }
+  $('addBtn').onclick=add;
+  $('inp').onkeydown=function(e){ if(e.key==='Enter') add(); };
+  $('clr').onclick=function(){
+    items.filter(function(i){return i.done}).forEach(function(i){ col.doc(i.id).delete().catch(function(){}); });
+  };
+
+  function offline(){
+    $('sub').textContent='Modo offline';
+    $('warn').innerHTML='<div class="warn">Para sincronizar entre celulares, abra este link pelo Claude, logado na conta, e compartilhe com sua esposa como Colaborador (Contributor).</div>';
+    $('inp').disabled=true; $('addBtn').disabled=true;
+  }
+
+  async function init(){
+    try{
+      if(!window.claude||!window.claude.use){ offline(); return; }
+      var db=await window.claude.use('db');
+      if(!db){ offline(); return; }
+      try{
+        var user=await window.claude.use('user');
+        if(user){ var w=user.can('data.write'); if(w===false){ canWrite=false; $('inp').disabled=true; $('addBtn').disabled=true; $('warn').innerHTML='<div class="warn">Você só tem acesso de leitura. Peça permissão de Colaborador.</div>'; } }
+      }catch(e){}
+      col=db.collection('items');
+      $('sub').textContent='Sincronizado em tempo real ✓';
+      col.onSnapshot(function(snap){
+        items=snap.docs.map(function(d){ var v=d.data()||{}; return {id:d.id,text:String(v.text||''),done:!!v.done,ts:v.ts||0}; });
+        render();
+      },function(){ $('sub').textContent='Erro de conexão'; });
+    }catch(e){ offline(); }
+  }
+  render();
+  init();
+})();
+</script>
+</body>
+</html>
